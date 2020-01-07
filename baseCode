@@ -1,0 +1,297 @@
+--Code by Monkeys_Inc
+
+--Customizable Variables
+local shipAssetBundleURL = "http://cloud-3.steamusercontent.com/ugc/780744997536415902/F63F6CB3AD716E9BD236FF3669DB26128D5EB062/"
+local initiative = 2 --Initiative shown on the base
+Data = { --Data used for the new dials
+    actSet = {'F','TL','B','R'},
+    Faction = 3,
+    moveSet = {
+      "ws4","rk4",
+      "wbl3","bs3","wbr3","rtl3t","rtr3t",
+      "wtl2","wbl2","bs2","wbr2","wtr2",
+      "wtl1","bbl1","bs1","bbr1","wtr1"
+    },
+    Size = 2
+}
+__ModelDB_data = { --Data used for collision data
+    baseSize = "medium",
+    collider = "full"
+}
+local shipRiseDistance = 2.1 --Height of AssetBundle
+local shipForwardAdjust = 0 --Adjustment forward and back of AssetBundle
+local shipScale = {x = 0.63, y = 0.63, z = 0.63} --Scale of AssetBundle
+
+--Variable Initialization
+local ship = nil --Reference to the AssetBundle
+local shipShouldBeThere = false
+local shipOnTheWay = false
+local waitID = 0
+arcDir = 0 --0=Forward,1=Right,2=Back,3=Left
+b_nameTag = { --Name on the base (can be edited via descreption)
+	index = 0,
+	label = "Y-Wing",
+	click_function = "nameTagClick",
+	function_owner = self,
+	position = {0,0.15,1.47},
+	color = {0,0,0,1},
+	font_color = {1,1,1,1},
+	font_size = 100,
+	height = 1,
+	width = 1
+}
+b_initiative = { --Initiative number on base (can be edited via 'initiative' variable)
+	index = 1,
+	label = initiative,
+	click_function = "initiativeClick",
+	function_owner = self,
+	position = {-1.35,0.15,1.1},
+	color = {0,0,0,1},
+	font_color = {0.824,0.466,0.199,1},
+	font_size = 160,
+	height = 1,
+	width = 1
+}
+
+function onLoad()
+    --Set up the text on the base
+	self.createButton(b_nameTag)
+	self.createButton(b_initiative)
+end
+
+function onDrop()
+	--Start the timer to warp in ship
+	if (not shipOnTheWay) and (not shipShouldBeThere) then
+		waitID = Wait.time(warpIn,2,0)
+		shipOnTheWay = true
+	end
+end
+
+function onPickUp(color)
+	--Remove the ship and cancel the warp in when picked up
+	if ship then
+		ship.destruct()
+		ship = nil
+	end
+	Wait.stop(waitID)
+	shipShouldBeThere = false
+	shipOnTheWay = false
+end
+
+function warpIn()
+	--Spawn and play 'warpIn' animation when dropped
+	shipShouldBeThere = true
+  ensureShip(true)
+  Wait.frames(function () playTrigger("warpIn") end,4)
+end
+
+function playTrigger(triggerIndex)
+	--Look at the trigger effects on the AssetBundle and play the one that matches 'triggerIndex' if it exists
+	--AssetBundle trigger labels 'warpIn','BRL','BRR','Boost','Sloop','Talon','Kturn','Death','Arc[F,R,B,L][F,R,B,L]'
+  if shipShouldBeThere == false then
+    return
+  end
+	local triggerList = ship.AssetBundle.getTriggerEffects()
+	if triggerList == nil then
+    ship.AssetBundle.playLoopingEffect(0)
+	else
+		for i,trigger in pairs(triggerList) do
+			if trigger.name == triggerIndex then
+				ship.AssetBundle.playTriggerEffect(trigger.index)
+        --print("Trigger:"..triggerIndex)
+        return
+			end
+		end
+	end
+end
+
+function playLoop(loopIndex)
+	--Look at the loop effects on the AssetBundle and play the one that matches 'loopIndex' if it exists
+	--AssetBundle loop labels 'Idle','Cloaked','Half','Open','Closed'
+  if shipShouldBeThere == false then
+    return
+  end
+	local loopList = ship.AssetBundle.getLoopingEffects()
+	if loopList == nil then
+		ship.AssetBundle.playLoopingEffect(0)
+	else
+		for i,loop in pairs(loopList) do
+			if loop.name == loopIndex then
+				ship.AssetBundle.playLoopingEffect(loop.index)
+        --print("Loop:"..loopIndex)
+        return
+			end
+		end
+	end
+end
+
+function ensureShip(hard)
+    --If the ship should be there, make sure its where it should be.
+	if shipShouldBeThere then
+		if ship == null then
+			local params = {
+				type = 'Custom_Assetbundle'
+			}
+			local custom = {
+				assetbundle = shipAssetBundleURL,
+				type = 0,
+				material = 2
+			}
+			ship = spawnObject(params)
+			ship.setCustomObject(custom)
+			ship.setScale(shipScale)
+			ship.lock()
+			ship.interactable = false
+			moveShipToBase(hard)
+		end
+	end
+end
+
+function moveShipToBase(hard)
+    --Calculate reletive position to be moved too
+	if shipShouldBeThere then
+		ensureShip()
+		local posUp = self.getTransformUp()
+		local posBase = self.getPosition()
+		local posTarget = {
+			x = posBase.x + posUp.x * shipRiseDistance,
+			y = posBase.y + posUp.y * shipRiseDistance,
+			z = posBase.z + posUp.z * shipRiseDistance
+		}
+		local posForward = self.getTransformForward()
+		posTarget.x = posTarget.x + posForward.x * shipForwardAdjust
+		posTarget.y = posTarget.y + posForward.y * shipForwardAdjust
+		posTarget.z = posTarget.z + posForward.z * shipForwardAdjust
+		rotTarget = self.getRotation()
+
+		--Move the ship to the base, if hard = true then dont smooth
+		if hard then
+			ship.setPosition(posTarget,false,false)
+			ship.setRotation(rotTarget,false,false)
+		else
+			ship.setPositionSmooth(posTarget,false,false)
+			ship.setRotationSmooth(rotTarget,false,false)
+		end
+	end
+end
+
+function onUpdate()
+	--Check the description for triggers
+	checkDescription(self.getDescription())
+	--Move the ship to the base
+	moveShipToBase(false)
+	--Update the ship Name tag, and scale it down if needed
+	local name = self.getName()
+	local length = string.len(name)
+	if string.sub(name,1,1) == "*" then
+		name = "•" .. string.sub(name,2,length)
+	end
+	local size = b_nameTag.font_size
+	if length>18 then
+		size = size/(length / 18)
+	end
+  self.setName(name)
+	self.editButton({
+		index = 0,
+		label = name,
+		font_size = size
+	})
+end
+
+function checkDescription(desc)
+	--If the description contains a reconised trigger then atempt to play the matching description
+	if shipShouldBeThere then
+		local bRolls = {"rr1","rr2","rr3","rl1","rl2","rl3","vrf1","vrf2","vrf3","vrb1","vrb2","vrb3","vlf1","vlf2","vlf3","vlb1","vlb2","vlb3"}
+		for i,v in pairs(bRolls) do
+			if desc == v then
+				local call = "BR"..string.upper(string.sub(desc,2,2))
+				playTrigger(call)
+				return
+			end
+		end
+		local last = string.sub(desc,-1,-1)
+		local first = string.sub(desc,1,1)
+		local speed = string.sub(desc,2,2)
+		if last == "b" then
+			playTrigger("Boost")
+			return
+		end
+		if (last == "s") then
+			playTrigger("Sloop")
+			return
+		end
+		if (last == "t") then
+			playTrigger("Talon")
+			return
+		end
+		if (first == "k") then
+			playTrigger("Kturn")
+			return
+		end
+	end
+end
+
+function onCollisionEnter(info)
+  --On collision check to see if it is an Arc Indicator and update direction
+  local Arc = info.collision_object
+  if Arc.getName() == "Arc Indicator" then
+    local relRot = Arc.getRotation().y - self.getRotation().y
+    while relRot >= 360 do
+      relRot = relRot - 360
+    end
+    while relRot <= 0 do
+      relRot = relRot + 360
+    end
+    if (relRot >= 45) and (relRot <= 135) then
+      rotateTurret(1)
+    elseif (relRot >= 135) and (relRot <= 225) then
+      rotateTurret(2)
+    elseif (relRot >= 225) and (relRot <= 315) then
+      rotateTurret(3)
+    else
+      rotateTurret(0)
+    end
+  end
+end
+
+function rotateTurret(targetDir)
+	--Play the appropriate turret rotation animation
+	if arcDir ~= targetDir then
+		local code = "Arc"..decodeDir(arcDir)..decodeDir(targetDir)
+    if targetDir == 0 then
+      playLoop("idle")
+    end
+    playLoop("idle"..decodeDir(targetDir))
+		playTrigger(code)
+		arcDir = targetDir
+	end
+end
+
+function decodeDir(dir)
+	--Convert direction number into a character
+	if dir == 0 then
+		return "F"
+	elseif dir == 1 then
+		return "R"
+	elseif dir == 2 then
+		return "B"
+	elseif dir == 3 then
+		return "L"
+	end
+end
+
+function onDestroy()
+	--If the base should die, so shall the ship AssetBundle
+	if ship then
+		ship.destruct()
+		ship = nil
+	end
+end
+
+function nameTagClick()
+	--Name Tag Button
+end
+
+function initiativeClick()
+	--Initiative Button
+end
