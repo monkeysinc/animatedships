@@ -30,7 +30,7 @@ local waitID = 0
 arcDir = 0 --0=Forward,1=Right,2=Back,3=Left
 b_nameTag = { --Name on the base (can be edited via descreption)
 	index = 0,
-	label = "Y-Wing",
+	label = "Firespray",
 	click_function = "nameTagClick",
 	function_owner = self,
 	position = {0,0.15,1.47},
